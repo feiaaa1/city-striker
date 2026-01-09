@@ -25,6 +25,7 @@ const GameScene: React.FC<GameSceneProps> = ({
 	const { camera, raycaster, scene } = useThree();
 	const [bullets, setBullets] = useState<BulletData[]>([]);
 	const [enemies, setEnemies] = useState<EnemyData[]>([]);
+	const playerCollisionRadius = 0.5; // Player collision radius for enemy bullet detection
 
 	// Player state
 	const velocity = useRef(new THREE.Vector3());
@@ -222,33 +223,51 @@ const GameScene: React.FC<GameSceneProps> = ({
 						bullet.position[2] + bullet.velocity[2],
 					];
 
-					// Collision Check
 					let hit = false;
-					setEnemies((prevEnemies) => {
-						return prevEnemies.map((enemy) => {
-							const dx = enemy.position[0] - newPos[0];
-							const dy = enemy.position[1] + 1 - newPos[1];
-							const dz = enemy.position[2] - newPos[2];
-							const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-							if (dist < 1 && enemy.health > 0) {
-								hit = true;
-								audioManager.playHitSound();
-								const newHealth = enemy.health - 25;
-								if (newHealth <= 0) {
-									updateGameState((s) => ({
-										...s,
-										score: s.score + 25,
-										enemiesKilled: s.enemiesKilled + 1,
-									}));
-								} else {
-									updateGameState((s) => ({ ...s, score: s.score + 25 }));
+					if (bullet.isEnemyBullet) {
+						// Enemy bullet - check collision with player
+						const dx = camera.position.x - newPos[0];
+						const dy = camera.position.y - newPos[1];
+						const dz = camera.position.z - newPos[2];
+						const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+						if (dist < playerCollisionRadius) {
+							hit = true;
+							audioManager.playDamageSound();
+							updateGameState((s) => ({
+								...s,
+								health: Math.max(0, s.health - 10),
+							}));
+						}
+					} else {
+						// Player bullet - check collision with enemies
+						setEnemies((prevEnemies) => {
+							return prevEnemies.map((enemy) => {
+								const dx = enemy.position[0] - newPos[0];
+								const dy = enemy.position[1] + 1 - newPos[1];
+								const dz = enemy.position[2] - newPos[2];
+								const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+								if (dist < 1 && enemy.health > 0) {
+									hit = true;
+									audioManager.playHitSound();
+									const newHealth = enemy.health - 25;
+									if (newHealth <= 0) {
+										updateGameState((s) => ({
+											...s,
+											score: s.score + 25,
+											enemiesKilled: s.enemiesKilled + 1,
+										}));
+									} else {
+										updateGameState((s) => ({ ...s, score: s.score + 25 }));
+									}
+									return { ...enemy, health: newHealth };
 								}
-								return { ...enemy, health: newHealth };
-							}
-							return enemy;
+								return enemy;
+							});
 						});
-					});
+					}
 
 					if (!hit) {
 						nextBullets.push({ ...bullet, position: newPos });
@@ -301,13 +320,35 @@ const GameScene: React.FC<GameSceneProps> = ({
 					now - (enemy.lastAttackTime || 0) > (enemy.attackCooldown || 2000);
 
 				if (canAttack) {
-					// Damage player
+					// Create enemy bullet
 					audioManager.playEnemyAttackSound();
-					audioManager.playDamageSound();
-					updateGameState((s) => ({
-						...s,
-						health: Math.max(0, s.health - 10),
-					}));
+					
+					// Calculate direction from enemy to player
+					const directionToPlayer = new THREE.Vector3(
+						camera.position.x - enemy.position[0],
+						camera.position.y - enemy.position[1] - 1.2, // Enemy torso height
+						camera.position.z - enemy.position[2]
+					).normalize();
+
+					// Create enemy bullet
+					const enemyBullet: BulletData = {
+						id: Math.random().toString(),
+						position: [
+							enemy.position[0],
+							enemy.position[1] + 1.2, // Shoot from enemy torso
+							enemy.position[2],
+						],
+						velocity: [
+							directionToPlayer.x * 1.5, // Slightly slower than player bullets
+							directionToPlayer.y * 1.5,
+							directionToPlayer.z * 1.5,
+						],
+						createdAt: now,
+						isEnemyBullet: true,
+					};
+
+					setBullets((prev) => [...prev, enemyBullet]);
+
 					return {
 						...enemy,
 						position: newPos,
@@ -412,7 +453,9 @@ const GameScene: React.FC<GameSceneProps> = ({
 			{bullets.map((bullet) => (
 				<mesh key={bullet.id} position={bullet.position}>
 					<sphereGeometry args={[0.05, 8, 8]} />
-					<meshBasicMaterial color="#ffff00" />
+					<meshBasicMaterial
+						color={bullet.isEnemyBullet ? "#ff0000" : "#ffff00"}
+					/>
 				</mesh>
 			))}
 

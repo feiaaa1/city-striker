@@ -15,6 +15,7 @@ export interface BulletData {
 	position: [number, number, number];
 	velocity: [number, number, number];
 	createdAt: number;
+	isEnemyBullet?: boolean; // true for enemy bullets, false/undefined for player bullets
 }
 
 export interface EnemyData {
