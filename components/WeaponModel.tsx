@@ -25,23 +25,31 @@ const WeaponModel: React.FC<WeaponModelProps> = ({ isReloading = false }) => {
 			targetPos.add(camera.position);
 
 			group.current.position.lerp(targetPos, 0.3);
-			group.current.quaternion.slerp(camera.quaternion, 0.3);
-
+			
+			// Base quaternion from camera
+			const baseQuaternion = camera.quaternion.clone();
+			
 			// Reload animation
 			if (isReloading) {
 				reloadAnimationTime.current += delta;
 				const progress = Math.min(reloadAnimationTime.current / 1.5, 1); // 1.5s reload time
 				
-				// Rotate weapon down and back during reload
+				// Rotate weapon down and back during reload using quaternion
 				const reloadRotation = Math.sin(progress * Math.PI) * 0.3;
-				group.current.rotation.x = reloadRotation;
+				const reloadQuaternion = new THREE.Quaternion().setFromAxisAngle(
+					new THREE.Vector3(1, 0, 0),
+					reloadRotation
+				);
+				baseQuaternion.multiply(reloadQuaternion);
 				group.current.position.y -= reloadRotation * 0.2;
 			} else {
 				// Weapon sway/bob (breathing effect)
 				const t = state.clock.getElapsedTime();
 				group.current.position.y += Math.sin(t * 4) * 0.002;
-				group.current.rotation.x = 0;
 			}
+			
+			// Apply quaternion with smooth interpolation
+			group.current.quaternion.slerp(baseQuaternion, 0.3);
 		}
 	});
 
